@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>時間指定モニター | 一括管理版</title>
+    <title>時間指定モニター | time-specification</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .glass-card { background: #161B22; border: 1px solid #30363D; border-radius: 1rem; padding: 1rem; transition: all 0.2s; }
+        .glass-card { background: #161B22; border: 1px solid #30363D; border-radius: 1rem; padding: 1rem; transition: all 0.2s; cursor: pointer; }
         .urgent { border: 2px solid #DA3633; box-shadow: 0 0 15px rgba(218, 54, 51, 0.4); animation: pulse 2s infinite; }
         @keyframes pulse { 0% { border-color: #DA3633; } 50% { border-color: #ff7b72; } 100% { border-color: #DA3633; } }
-        .done { opacity: 0.2; background: #010409 !important; filter: grayscale(1); }
+        .done { opacity: 0.15; background: #010409 !important; filter: grayscale(1); }
         .tab-nums { font-variant-numeric: tabular-nums; }
     </style>
 </head>
@@ -19,27 +19,26 @@
     <header class="mb-6 bg-[#161B22] p-5 rounded-2xl border border-[#30363D] shadow-xl flex justify-between items-center">
         <div>
             <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Time Slot Monitor</h1>
-            <p class="text-[10px] text-gray-500 font-bold">EXCEL IMPORT SYSTEM</p>
+            <p class="text-[10px] text-sky-500 font-bold">READY TO TRACK</p>
         </div>
         <div id="live-clock" class="text-3xl font-black text-sky-400 tab-nums">00:00:00</div>
     </header>
 
     <div id="import-area" class="mb-6 bg-[#161B22] p-6 rounded-2xl border border-[#30363D]">
-        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase">Excelからコピーして貼り付け（DA番号 / 名前）</label>
-        <textarea id="excel-input" class="w-full h-40 bg-[#0D1117] border border-[#30363D] rounded-xl p-4 text-sm text-white focus:border-sky-500 outline-none mb-4" placeholder="DA123456	佐藤 太郎 (エクセルの列をそのままコピペ)"></textarea>
+        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase italic">エクセルの「DA番号」と「名前」を貼り付け</label>
+        <textarea id="excel-input" class="w-full h-48 bg-[#0D1117] border border-[#30363D] rounded-xl p-4 text-sm text-white focus:border-sky-500 outline-none mb-4" placeholder="DA8857182	佐藤 太郎"></textarea>
         
-        <div class="grid grid-cols-2 gap-3 mb-4">
+        <div class="grid grid-cols-2 gap-3">
             <div>
                 <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase text-center">締め切り時間</label>
                 <input type="time" id="default-deadline" value="21:00" class="w-full bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-white text-center font-bold">
             </div>
             <div class="flex items-end">
                 <button onclick="processData()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-black py-3 rounded-lg shadow-lg transition-all active:scale-95">
-                    モニター起動 🚀
+                    モニターを開始する 🚀
                 </button>
             </div>
         </div>
-        <p class="text-[10px] text-gray-600 text-center italic">※貼り付けたデータのタブ区切りを自動判別します</p>
     </div>
 
     <div id="monitor-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
@@ -53,15 +52,14 @@
             const lines = rawText.trim().split('\n');
 
             deliveries = lines.map(line => {
-                // エクセル特有のタブ区切り、またはスペース区切りに対応
-                const parts = line.split(/\t|\s{2,}/);
+                const parts = line.split(/\t|\s{2,}/); // タブまたは空白で分割
                 return {
-                    da: parts[0] ? parts[0].trim() : "DA不明",
-                    name: parts[1] ? parts[1].trim() : "名前なし",
+                    da: parts[0] ? parts[0].trim() : "不明",
+                    name: parts[1] ? parts[1].trim() : "---",
                     deadline: defaultTime,
                     status: 'pending'
                 };
-            }).filter(item => item.da !== "DA不明");
+            }).filter(item => item.da !== "不明" && item.da !== "");
 
             if (deliveries.length > 0) {
                 document.getElementById('import-area').classList.add('hidden');
@@ -92,18 +90,18 @@
 
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-gray-500 uppercase tracking-tighter">DA ID: ${index + 1}</span>
+                        <span class="text-[10px] font-black text-gray-600 uppercase">Track #${index + 1}</span>
                         <div class="text-right">
-                            <p class="text-[9px] font-bold text-gray-600 uppercase">Remaining</p>
+                            <p class="text-[9px] font-bold text-gray-500 uppercase">Limit</p>
                             <p class="text-sm font-black tab-nums ${isOver ? 'text-rose-500' : isUrgent ? 'text-amber-400' : 'text-sky-400'}">
-                                ${isOver ? 'DEADLINE' : diffMins + ' min'}
+                                ${isOver ? 'OVER' : '残り ' + diffMins + '分'}
                             </p>
                         </div>
                     </div>
-                    <div class="text-xl font-black text-white mb-1 tracking-tight">${item.da}</div>
-                    <div class="flex justify-between items-center mt-3 pt-2 border-t border-white/5">
+                    <div class="text-xl font-black text-white mb-2 tracking-tight">${item.da}</div>
+                    <div class="pt-2 border-t border-white/5 flex justify-between items-center">
                         <span class="text-sm font-bold text-gray-400">👤 ${item.name}</span>
-                        <span class="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-500 font-bold">${item.deadline}迄</span>
+                        <span class="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-600 font-bold">${item.deadline}</span>
                     </div>
                 `;
                 grid.appendChild(card);
@@ -116,7 +114,7 @@
             if (deliveries.length > 0) updateDisplay();
         }
 
-        setInterval(clock, 30000); // 30秒ごとに更新
+        setInterval(clock, 10000); // 10秒ごとに更新
         clock();
     </script>
 </body>
