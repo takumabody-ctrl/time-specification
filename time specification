@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>時間指定一括モニター</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
+        .delivery-card { background: #161B22; border: 1px solid #30363D; border-radius: 0.75rem; padding: 1rem; transition: all 0.2s; }
+        .urgent { border: 2px solid #DA3633; box-shadow: 0 0 15px rgba(218, 54, 51, 0.4); animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .done { opacity: 0.3; background: #010409; text-decoration: line-through; }
+        .time-badge { font-variant-numeric: tabular-nums; font-weight: 900; }
+    </style>
+</head>
+<body class="p-4">
+
+    <header class="mb-6 flex justify-between items-center bg-[#161B22] p-4 rounded-xl border border-[#30363D]">
+        <h1 class="text-xl font-bold">時間指定モニター</h1>
+        <div id="live-clock" class="text-2xl font-black text-sky-400">00:00:00</div>
+    </header>
+
+    <div id="input-section" class="mb-6 bg-[#161B22] p-4 rounded-xl border border-[#30363D]">
+        <p class="text-xs text-gray-500 mb-2 font-bold uppercase">Excelデータをここに貼り付け (名前 / DA番号)</p>
+        <textarea id="excel-input" class="w-full h-32 bg-[#0D1117] border border-[#30363D] rounded p-2 text-sm text-white mb-3" placeholder="田中太郎	DA123456 (タブ区切り)"></textarea>
+        <button onclick="importData()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-bold py-3 rounded-lg transition-all">
+            モニターを開始する
+        </button>
+    </div>
+
+    <div id="monitor-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"></div>
+
+    <script>
+        let deliveryList = [];
+
+        function importData() {
+            const raw = document.getElementById('excel-input').value;
+            const lines = raw.trim().split('\n');
+            deliveryList = lines.map(line => {
+                const [name, da] = line.split('\t'); // エクセルのコピペは通常タブ区切り
+                return {
+                    name: name || "不明",
+                    da: da || "DA不明",
+                    deadline: "16:00", // デフォルト。DA番号から自動抽出するロジックも追加可能
+                    status: 'pending'
+                };
+            });
+            
+            document.getElementById('input-section').classList.add('hidden');
+            renderMonitor();
+        }
+
+        function renderMonitor() {
+            const grid = document.getElementById('monitor-grid');
+            grid.innerHTML = '';
+            const now = new Date();
+
+            deliveryList.forEach((item, index) => {
+                const [h, m] = item.deadline.split(':').map(Number);
+                const target = new Date();
+                target.setHours(h, m, 0);
+                
+                const diffMs = target - now;
+                const diffMins = Math.floor(diffMs / 60000);
+                
+                const isUrgent = diffMins > 0 && diffMins <= 30;
+                const isLate = diffMins <= 0;
+
+                const card = document.createElement('div');
+                card.className = `delivery-card ${item.status === 'done' ? 'done' : ''} ${isUrgent ? 'urgent' : ''}`;
+                card.onclick = () => toggleDone(index);
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-2">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase">Deadline: ${item.deadline}</span>
+                        <span class="time-badge ${isLate ? 'text-rose-500' : 'text-sky-400'} text-sm">
+                            ${isLate ? 'OVER' : 'あと ' + diffMins + '分'}
+                        </span>
+                    </div>
+                    <div class="text-lg font-black text-white mb-1">${item.da}</div>
+                    <div class="text-sm font-bold text-gray-400">${item.name}</div>
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function toggleDone(index) {
+            deliveryList[index].status = deliveryList[index].status === 'done' ? 'pending' : 'done';
+            renderMonitor();
+        }
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').innerText = now.toLocaleTimeString('ja-JP');
+            if (deliveryList.length > 0) renderMonitor();
+        }
+
+        setInterval(updateClock, 10000); // 10秒おきに再描画
+        updateClock();
+    </script>
+</body>
+</html>
