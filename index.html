@@ -3,119 +3,135 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>時間指定モニター | time-specification</title>
+    <title>配達荷物一括集計モニター</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .glass-card { background: #161B22; border: 1px solid #30363D; border-radius: 1rem; padding: 1rem; transition: all 0.2s; cursor: pointer; }
-        .urgent { border: 2px solid #DA3633; box-shadow: 0 0 15px rgba(218, 54, 51, 0.4); animation: pulse 2s infinite; }
-        @keyframes pulse { 0% { border-color: #DA3633; } 50% { border-color: #ff7b72; } 100% { border-color: #DA3633; } }
-        .done { opacity: 0.15; background: #010409 !important; filter: grayscale(1); }
-        .tab-nums { font-variant-numeric: tabular-nums; }
+        .driver-card { background: #161B22; border: 1px solid #30363D; border-radius: 1rem; padding: 1.25rem; height: fit-content; }
+        .da-badge { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.85rem; padding: 0.2rem 0.5rem; border-radius: 0.4rem; display: inline-block; margin: 2px; }
+        .drop-zone { border: 2px dashed #30363D; transition: all 0.3s; }
+        .drop-zone.active { border-color: #58A6FF; background: rgba(88, 166, 255, 0.1); }
+        .count-badge { background: #238636; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.9rem; font-weight: bold; }
     </style>
 </head>
 <body class="p-4">
 
-    <header class="mb-6 bg-[#161B22] p-5 rounded-2xl border border-[#30363D] shadow-xl flex justify-between items-center">
+    <header class="mb-6 flex justify-between items-end border-b border-[#30363D] pb-4">
         <div>
-            <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Time Slot Monitor</h1>
-            <p class="text-[10px] text-sky-500 font-bold">READY TO TRACK</p>
+            <h1 class="text-2xl font-black text-white tracking-tighter uppercase">Delivery Aggregator</h1>
+            <p class="text-xs text-gray-500 font-bold">エクセル集計・ドライバー別一覧</p>
         </div>
-        <div id="live-clock" class="text-3xl font-black text-sky-400 tab-nums">00:00:00</div>
+        <button onclick="location.reload()" class="text-xs bg-[#30363D] hover:bg-[#444c56] text-white px-3 py-1 rounded-md transition-all">リセット</button>
     </header>
 
-    <div id="import-area" class="mb-6 bg-[#161B22] p-6 rounded-2xl border border-[#30363D]">
-        <label class="block text-xs font-bold text-gray-500 mb-2 uppercase italic">エクセルの「DA番号」と「名前」を貼り付け</label>
-        <textarea id="excel-input" class="w-full h-48 bg-[#0D1117] border border-[#30363D] rounded-xl p-4 text-sm text-white focus:border-sky-500 outline-none mb-4" placeholder="DA8857182	佐藤 太郎"></textarea>
-        
-        <div class="grid grid-cols-2 gap-3">
-            <div>
-                <label class="block text-[10px] text-gray-500 font-bold mb-1 uppercase text-center">締め切り時間</label>
-                <input type="time" id="default-deadline" value="21:00" class="w-full bg-[#0D1117] border border-[#30363D] rounded-lg p-3 text-white text-center font-bold">
-            </div>
-            <div class="flex items-end">
-                <button onclick="processData()" class="w-full bg-sky-600 hover:bg-sky-500 text-white font-black py-3 rounded-lg shadow-lg transition-all active:scale-95">
-                    モニターを開始する 🚀
-                </button>
-            </div>
-        </div>
+    <div id="drop-area" class="drop-zone mb-8 p-10 rounded-2xl text-center cursor-pointer">
+        <div class="text-4xl mb-3">📊</div>
+        <p class="text-sm font-bold text-gray-400">エクセルファイルをここにドラッグ＆ドロップ</p>
+        <p class="text-[10px] text-gray-600 mt-2 uppercase tracking-widest">or click to select file</p>
+        <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
     </div>
 
-    <div id="monitor-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+    <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
 
     <script>
-        let deliveries = [];
+        const dropArea = document.getElementById('drop-area');
+        const fileInput = document.getElementById('file-input');
 
-        function processData() {
-            const rawText = document.getElementById('excel-input').value;
-            const defaultTime = document.getElementById('default-deadline').value;
-            const lines = rawText.trim().split('\n');
+        // クリックでファイル選択
+        dropArea.addEventListener('click', () => fileInput.click());
 
-            deliveries = lines.map(line => {
-                const parts = line.split(/\t|\s{2,}/); // タブまたは空白で分割
-                return {
-                    da: parts[0] ? parts[0].trim() : "不明",
-                    name: parts[1] ? parts[1].trim() : "---",
-                    deadline: defaultTime,
-                    status: 'pending'
-                };
-            }).filter(item => item.da !== "不明" && item.da !== "");
+        // ドラッグオーバー時のエフェクト
+        dropArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropArea.classList.add('active');
+        });
 
-            if (deliveries.length > 0) {
-                document.getElementById('import-area').classList.add('hidden');
-                updateDisplay();
-            }
+        dropArea.addEventListener('dragleave', () => dropArea.classList.remove('active'));
+
+        // ドロップ時の処理
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropArea.classList.remove('active');
+            const file = e.dataTransfer.files[0];
+            handleFile(file);
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const sheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                processData(json);
+            };
+            reader.readAsArrayBuffer(file);
         }
 
-        function updateDisplay() {
-            const grid = document.getElementById('monitor-grid');
+        function processData(data) {
+            // ドライバーごとの集計オブジェクト
+            const summary = {};
+
+            // データの解析（1行目はヘッダーと想定し、2行目からループ）
+            data.forEach((row, index) => {
+                if (index === 0) return; 
+
+                // エクセルの列順に基づき取得（A列:DA番号, B列:名前 と想定）
+                // ※もし列が逆ならここを入れ替えてください
+                const da = String(row[0] || "").trim();
+                const name = String(row[1] || "").trim();
+
+                if (da && name) {
+                    if (!summary[name]) {
+                        summary[name] = [];
+                    }
+                    summary[name].push(da);
+                }
+            });
+
+            renderGrid(summary);
+        }
+
+        function renderGrid(summary) {
+            const grid = document.getElementById('result-grid');
+            const dropZone = document.getElementById('drop-area');
             grid.innerHTML = '';
-            const now = new Date();
+            
+            // 入力エリアを小さくする
+            dropZone.classList.add('hidden');
 
-            deliveries.forEach((item, index) => {
-                const [h, m] = item.deadline.split(':').map(Number);
-                const target = new Date();
-                target.setHours(h, m, 0, 0);
-                
-                const diffMins = Math.floor((target - now) / 60000);
-                const isUrgent = diffMins <= 30 && diffMins > 0;
-                const isOver = diffMins <= 0;
+            const names = Object.keys(summary).sort();
 
+            if (names.length === 0) {
+                alert("データが読み取れませんでした。エクセルのA列にDA番号、B列に名前が入っているか確認してください。");
+                dropZone.classList.remove('hidden');
+                return;
+            }
+
+            names.forEach(name => {
+                const das = summary[name];
                 const card = document.createElement('div');
-                card.className = `glass-card ${item.status === 'done' ? 'done' : ''} ${isUrgent && item.status !== 'done' ? 'urgent' : ''}`;
-                card.onclick = () => {
-                    deliveries[index].status = deliveries[index].status === 'done' ? 'pending' : 'done';
-                    updateDisplay();
-                };
-
+                card.className = 'driver-card shadow-2xl';
+                
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-2">
-                        <span class="text-[10px] font-black text-gray-600 uppercase">Track #${index + 1}</span>
-                        <div class="text-right">
-                            <p class="text-[9px] font-bold text-gray-500 uppercase">Limit</p>
-                            <p class="text-sm font-black tab-nums ${isOver ? 'text-rose-500' : isUrgent ? 'text-amber-400' : 'text-sky-400'}">
-                                ${isOver ? 'OVER' : '残り ' + diffMins + '分'}
-                            </p>
-                        </div>
+                    <div class="flex justify-between items-center mb-4 border-b border-white/5 pb-2">
+                        <h2 class="text-lg font-black text-white tracking-tight">👤 ${name}</h2>
+                        <span class="count-badge">${das.length} <span class="text-[10px]">個</span></span>
                     </div>
-                    <div class="text-xl font-black text-white mb-2 tracking-tight">${item.da}</div>
-                    <div class="pt-2 border-t border-white/5 flex justify-between items-center">
-                        <span class="text-sm font-bold text-gray-400">👤 ${item.name}</span>
-                        <span class="text-[10px] bg-white/5 px-2 py-1 rounded text-gray-600 font-bold">${item.deadline}</span>
+                    <div class="flex flex-wrap gap-1">
+                        ${das.map(da => `<span class="da-badge">${da}</span>`).join('')}
                     </div>
                 `;
                 grid.appendChild(card);
             });
         }
-
-        function clock() {
-            const now = new Date();
-            document.getElementById('live-clock').innerText = now.toLocaleTimeString('ja-JP', { hour12: false });
-            if (deliveries.length > 0) updateDisplay();
-        }
-
-        setInterval(clock, 10000); // 10秒ごとに更新
-        clock();
     </script>
 </body>
 </html>
