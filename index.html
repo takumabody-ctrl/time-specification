@@ -3,112 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TAA-Amazon Delivery Monitor</title>
+    <title>AMZ-EXP Delivery Monitor | Platinum Edition</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        :root { --amazon-orange: #FF9900; --bg-dark: #0F172A; }
-        body { background-color: var(--bg-dark); color: #E2E8F0; font-family: 'Inter', system-ui, sans-serif; }
-        .priority-am { border-left: 6px solid #F87171; background: linear-gradient(90deg, #451a1a 0%, #1e293b 100%); }
-        .card-shadow { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4); }
-        .driver-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+        :root { --amz-orange: #FF9900; --bg-dark: #0D1117; }
+        body { background-color: var(--bg-dark); color: #C9D1D9; font-family: 'Inter', sans-serif; }
+        .priority-am { border-left: 5px solid #F85149; background: linear-gradient(90deg, #2a1215 0%, #161b22 100%); }
+        .glass-card { background: rgba(22, 27, 34, 0.8); border: 1px solid #30363D; backdrop-filter: blur(10px); }
+        .loader { border-top-color: #FF9900; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="p-4 md:p-8">
 
-    <header class="max-w-7xl mx-auto mb-8 flex justify-between items-center border-b border-slate-700 pb-6">
+    <header class="max-w-7xl mx-auto mb-8 flex justify-between items-end border-b border-gray-800 pb-6">
         <div>
-            <h1 class="text-3xl font-black text-white italic tracking-tighter">AMZ-EXP <span class="text-orange-500">MONITOR</span></h1>
-            <p class="text-xs text-slate-400 font-mono mt-1">Status: Operational / Engine: TAA-Architect-v1</p>
+            <h1 class="text-3xl font-black text-white italic tracking-tighter">DELIVERY <span class="text-orange-500">AGGREGATOR</span></h1>
+            <p class="text-xs text-gray-500 font-mono">System Architect: TAA Platinum / Version 2.0</p>
         </div>
-        <div class="flex gap-2">
-            <button onclick="location.reload()" class="bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all border border-slate-600">RESET</button>
-        </div>
+        <button onclick="location.reload()" class="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all border border-gray-700">RESET SYSTEM</button>
     </header>
 
     <main class="max-w-7xl mx-auto">
-        <section id="drop-area" class="relative group cursor-pointer border-2 border-dashed border-slate-700 rounded-3xl p-12 text-center transition-all hover:border-orange-500 hover:bg-slate-800/50 mb-8">
+        <div id="drop-area" class="relative group border-2 border-dashed border-gray-700 rounded-3xl p-16 text-center transition-all hover:border-orange-500 hover:bg-gray-800/30 mb-10">
             <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx, .xls, .csv, image/*">
-            <div class="space-y-4">
-                <div class="text-6xl group-hover:scale-110 transition-transform duration-300">📦</div>
-                <div class="text-xl font-bold text-white">Excel / スクショをここにドロップ</div>
-                <p class="text-slate-500 text-sm italic">自動的にCX(担当者)とDA(荷物)を紐づけ、午前指定を強調します</p>
+            <div id="drop-content" class="space-y-4">
+                <div class="text-6xl group-hover:scale-110 transition-transform duration-300">📊</div>
+                <h2 class="text-xl font-bold text-white">エクセル または スクショをドロップ</h2>
+                <p class="text-gray-500 text-sm">画像内のDA番号とCX名を自動で紐づけます</p>
             </div>
-        </section>
-
-        <div id="stats-bar" class="hidden grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div id="loading-ui" class="hidden flex flex-col items-center space-y-4">
+                <div class="loader w-12 h-12 border-4 border-gray-700 rounded-full"></div>
+                <p id="loading-text" class="text-orange-500 font-bold animate-pulse">AI OCR ANALYZING...</p>
             </div>
+        </div>
 
-        <div id="result-grid" class="driver-grid"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
     </main>
 
     <script>
-        // --- Domain Logic & State ---
         const State = {
-            deliveryData: [],
+            data: [],
             update(newData) {
-                this.deliveryData = newData;
+                this.data = newData;
                 this.render();
             },
             render() {
                 const grid = document.getElementById('result-grid');
-                const stats = document.getElementById('stats-bar');
                 grid.innerHTML = '';
-                
-                const grouped = this.deliveryData.reduce((acc, curr) => {
-                    if (!acc[curr.cx]) acc[curr.cx] = [];
-                    acc[curr.cx].push(curr);
+
+                // CX（名前）ごとにグループ化
+                const grouped = this.data.reduce((acc, item) => {
+                    if (!acc[item.cx]) acc[item.cx] = [];
+                    acc[item.cx].push(item);
                     return acc;
                 }, {});
 
-                Object.entries(grouped).forEach(([cx, packages]) => {
-                    const amCount = packages.filter(p => p.isAM).length;
+                Object.entries(grouped).forEach(([name, items]) => {
+                    const amCount = items.filter(i => i.isAM).length;
                     const card = document.createElement('div');
-                    card.className = `bg-slate-800/50 rounded-2xl p-5 border border-slate-700 card-shadow ${amCount > 0 ? 'priority-am' : ''}`;
+                    card.className = `glass-card rounded-2xl p-5 shadow-2xl transition-all hover:translate-y-[-4px] ${amCount > 0 ? 'priority-am' : ''}`;
                     
                     card.innerHTML = `
-                        <div class="flex justify-between items-start mb-4">
+                        <div class="flex justify-between items-center mb-4 pb-2 border-b border-gray-800">
                             <div>
-                                <h3 class="text-xl font-black text-white">${cx}</h3>
-                                <p class="text-[10px] text-slate-500 font-mono uppercase">Assigned Driver</p>
+                                <h3 class="text-lg font-bold text-white">${name}</h3>
+                                <p class="text-[10px] text-gray-500 uppercase tracking-widest">Delivery Staff</p>
                             </div>
                             <div class="text-right">
-                                <span class="bg-orange-500 text-black text-xs font-black px-2 py-1 rounded">Total: ${packages.length}</span>
-                                ${amCount > 0 ? `<div class="text-red-400 text-[10px] font-bold mt-1">⚠️ 午前指定: ${amCount}</div>` : ''}
+                                <span class="bg-green-600 text-white text-xs font-black px-2 py-1 rounded-full">${items.length}個</span>
                             </div>
                         </div>
-                        <div class="grid grid-cols-3 gap-2">
-                            ${packages.map(p => `
-                                <div class="bg-slate-900 border ${p.isAM ? 'border-red-500/50' : 'border-slate-700'} p-2 rounded text-center">
-                                    <span class="block text-[10px] text-slate-500">DA</span>
-                                    <span class="text-sm font-mono font-bold ${p.isAM ? 'text-red-400' : 'text-blue-400'}">${p.da}</span>
-                                </div>
+                        <div class="flex flex-wrap gap-1">
+                            ${items.map(i => `
+                                <span class="bg-gray-900 border ${i.isAM ? 'border-red-500 text-red-400' : 'border-gray-700 text-blue-400'} px-2 py-1 rounded font-mono text-xs font-bold">
+                                    ${i.da}
+                                </span>
                             `).join('')}
                         </div>
                     `;
                     grid.appendChild(card);
                 });
+
                 document.getElementById('drop-area').classList.add('hidden');
-                stats.classList.remove('hidden');
             }
         };
 
-        // --- File Handling (Excel & Image) ---
-        document.getElementById('file-input').addEventListener('change', async (e) => {
+        const fileInput = document.getElementById('file-input');
+        fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
 
+            toggleLoading(true);
+
             if (file.type.startsWith('image/')) {
-                // スクリーンショット解析 (OCRモック - 本番ではTesseractを稼働)
-                alert("画像解析エンジン起動中... (OCRは環境により数秒かかります)");
-                processImage(file);
+                await handleImage(file);
             } else {
-                processExcel(file);
+                await handleExcel(file);
             }
+            
+            toggleLoading(false);
         });
 
-        function processExcel(file) {
+        async function handleImage(file) {
+            try {
+                const worker = await Tesseract.createWorker('jpn');
+                const { data: { text } } = await worker.recognize(file);
+                console.log("Raw OCR Text:", text); // デバッグ用
+
+                const parsed = parseOcrText(text);
+                if (parsed.length === 0) alert("有効なデータを検出できませんでした。");
+                State.update(parsed);
+                await worker.terminate();
+            } catch (err) {
+                console.error(err);
+                alert("画像解析中にエラーが発生しました。");
+            }
+        }
+
+        function parseOcrText(text) {
+            // 改行で分割し、不要な空白を除去
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            const results = [];
+
+            lines.forEach(line => {
+                // 正規表現の設計:
+                // 1. DA番号: 最初の英数字の塊 (DA... または D4... など)
+                // 2. 名前: その後に続く日本語の塊
+                const daMatch = line.match(/(DA|D4|da|d4)[\-\s]?([0-9A-Z]+)/i);
+                const nameMatch = line.match(/[一-龠ぁ-んァ-ヶ]{2,}/);
+
+                if (daMatch) {
+                    const daId = daMatch[0].toUpperCase().replace(/\s/g, '');
+                    const cxName = nameMatch ? nameMatch[0] : "未割当";
+                    
+                    results.push({
+                        da: daId,
+                        cx: cxName,
+                        // 午前指定の判定（例: DA番号に特定の数字が含まれる、またはOCRテキスト内に「午前」がある場合）
+                        isAM: line.includes("午前") || line.includes("12") 
+                    });
+                }
+            });
+            return results;
+        }
+
+        async function handleExcel(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
                 const data = new Uint8Array(e.target.result);
@@ -118,7 +160,7 @@
                 const parsed = json.slice(1).map(row => ({
                     da: String(row[0] || "").trim(),
                     cx: String(row[1] || "未割当").trim(),
-                    isAM: String(row[0]).startsWith('8') // AmazonのDA接頭辞ルール等があればここにロジック追加
+                    isAM: String(row[0]).includes("午前") // 必要に応じて条件変更
                 })).filter(item => item.da);
                 
                 State.update(parsed);
@@ -126,15 +168,9 @@
             reader.readAsArrayBuffer(file);
         }
 
-        async function processImage(file) {
-            // Tesseract.js を利用した簡易OCR実装
-            const worker = await Tesseract.createWorker('jpn');
-            const ret = await worker.recognize(file);
-            console.log(ret.data.text);
-            // ここで正規表現を用いて「DA番号」と「名前」を抽出するロジックを実装
-            // 今回はデモとして、スクショ内のテキスト傾向からパースするスタブを配置
-            alert("OCR完了: テキストを抽出しました。");
-            await worker.terminate();
+        function toggleLoading(isLoading) {
+            document.getElementById('drop-content').classList.toggle('hidden', isLoading);
+            document.getElementById('loading-ui').classList.toggle('hidden', !isLoading);
         }
     </script>
 </body>
