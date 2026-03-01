@@ -3,105 +3,102 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Delivery Aggregator</title>
+    <title>15:00 Priority Aggregator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .priority-am { border-left: 6px solid #F85149; background: linear-gradient(90deg, #2a1215 0%, #161b22 100%); }
-        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; }
+        .priority-card { border-top: 4px solid #F85149; background: #161B22; }
+        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #FF9900; font-family: monospace; font-size: 0.85rem; padding: 4px; border-radius: 4px; text-align: center; }
     </style>
 </head>
 <body class="p-4">
 
-    <header class="max-w-6xl mx-auto mb-6 flex justify-between items-center border-b border-[#30363D] pb-4">
-        <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Delivery <span class="text-orange-500">Aggregator</span></h1>
-        <button onclick="location.reload()" class="text-xs bg-gray-800 px-3 py-1 rounded border border-gray-600">リセット</button>
+    <header class="max-w-6xl mx-auto mb-6 border-b border-[#30363D] pb-4">
+        <h1 class="text-xl font-black text-white italic uppercase">15:00 <span class="text-red-500">Priority</span> Filter</h1>
+        <p class="text-[10px] text-gray-500 font-bold uppercase">5:00〜15:00の荷物のみを抽出中</p>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-            <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-xl p-8 text-center hover:bg-[#161B22] transition-all cursor-pointer">
-                <p class="text-sm font-bold text-white">Excel/CSVをドロップ</p>
-                <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
-            </div>
-            <div class="relative">
-                <textarea id="paste-area" class="w-full h-24 bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-xs focus:border-orange-500 outline-none" placeholder="または、PDFからコピーしたテキストをここに貼り付け"></textarea>
-                <button id="process-text" class="absolute bottom-2 right-2 bg-orange-600 text-white text-[10px] px-3 py-1 rounded font-bold">解析実行</button>
-            </div>
+        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-10 text-center hover:bg-[#161B22] transition-all cursor-pointer mb-6">
+            <p class="text-white font-bold">Excelファイルをドロップして抽出開始</p>
+            <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
-        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
     </main>
 
     <script>
         const fileInput = document.getElementById('file-input');
         const dropArea = document.getElementById('drop-area');
-        const pasteArea = document.getElementById('paste-area');
-        const processBtn = document.getElementById('process-text');
 
-        // ファイル処理
         dropArea.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        function handleFile(file) {
+            if (!file) return;
             const reader = new FileReader();
-            reader.onload = (ev) => {
-                const data = new Uint8Array(ev.target.result);
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                render(json);
+                process(json);
             };
             reader.readAsArrayBuffer(file);
-        };
+        }
 
-        // 貼り付け処理
-        processBtn.onclick = () => {
-            const text = pasteArea.value;
-            const lines = text.split('\n').filter(l => l.trim());
-            const data = lines.map(line => {
-                // 正規表現でDA番号とCXを強引に抽出
-                const da = line.match(/DA[0-9A-Z]+/i);
-                const cx = line.match(/CX[0-9]+/i);
-                return { 'Tracking ID': da ? da[0] : '', 'Route Code': cx ? cx[0] : '不明' };
-            }).filter(d => d['Tracking ID']);
-            render(data);
-        };
-
-        function render(data) {
+        function process(data) {
             const grid = document.getElementById('result-grid');
             grid.innerHTML = '';
-            
-            const getVal = (row, patterns) => {
-                const key = Object.keys(row).find(k => patterns.some(p => k.toLowerCase().replace(/\s/g,'').includes(p)));
-                return key ? row[key] : null;
-            };
 
+            // 15:00までのデータを抽出し、CXごとにグループ化
             const summary = data.reduce((acc, row) => {
-                const cx = getVal(row, ['routecode', 'route', 'コース']) || '未割当';
-                const da = getVal(row, ['trackingid', 'da', '商品']) || '';
-                const endTime = String(getVal(row, ['endtime', 'scheduleddeliveryend']) || '');
-                const isAM = endTime.includes('13:00') || endTime.includes('12:00');
+                const endTime = String(row['Scheduled Delivery End Time'] || "");
+                const startTime = String(row['Scheduled Delivery Start Time'] || "");
+                
+                // 「13:00」や「14:00」「15:00」が含まれる、かつ「5:00」開始のものなどを判定
+                // 15時以前（15:00:00以下）のデータを抽出
+                const isTargetTime = (endTime.includes("12:00") || endTime.includes("13:00") || endTime.includes("14:00") || endTime.includes("15:00"));
 
-                if (!acc[cx]) acc[cx] = [];
-                if (da) acc[cx].push({ da, isAM });
+                if (isTargetTime) {
+                    const cx = row['Route Code'] || '未割当';
+                    const name = row['Last Scan By'] || '不明';
+                    const da = row['Tracking ID'] || 'Unknown';
+
+                    if (!acc[cx]) acc[cx] = { name, items: [] };
+                    acc[cx].items.push(da);
+                }
                 return acc;
             }, {});
 
-            Object.entries(summary).sort().forEach(([cx, items]) => {
-                const amCount = items.filter(i => i.isAM).length;
+            const entries = Object.entries(summary).sort();
+
+            if (entries.length === 0) {
+                grid.innerHTML = '<p class="text-center text-gray-500 col-span-full">対象の時間帯（15:00まで）の荷物は見つかりませんでした。</p>';
+                return;
+            }
+
+            entries.forEach(([cx, info]) => {
                 const card = document.createElement('div');
-                card.className = `bg-[#161B22] border border-[#30363D] rounded-xl p-4 shadow-xl ${amCount > 0 ? 'priority-am' : ''}`;
+                card.className = 'priority-card p-4 rounded-xl shadow-2xl';
                 card.innerHTML = `
                     <div class="flex justify-between items-center mb-3 border-b border-[#30363D] pb-2">
-                        <h2 class="text-sm font-black text-white italic tracking-tight">${cx} 担当者</h2>
-                        <span class="bg-[#238636] text-white text-[10px] px-2 py-0.5 rounded-full">合計 ${items.length}件</span>
+                        <div>
+                            <h2 class="text-sm font-black text-white italic">${cx} 担当者</h2>
+                            <p class="text-[10px] text-gray-500 font-bold">${info.name}</p>
+                        </div>
+                        <div class="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black">
+                            15:00迄: ${info.items.length}件
+                        </div>
                     </div>
-                    <div class="grid grid-cols-1 gap-1">
-                        ${items.map(i => `<div class="da-tag truncate ${i.isAM ? 'border-red-500 text-red-400' : ''}">${i.isAM ? '🕒 ' : ''}${i.da}</div>`).join('')}
+                    <div class="grid grid-cols-1 gap-1.5">
+                        ${info.items.map(da => `<div class="da-tag">${da}</div>`).join('')}
                     </div>
                 `;
                 grid.appendChild(card);
             });
+
+            dropArea.classList.add('hidden');
         }
     </script>
 </body>
