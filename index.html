@@ -3,31 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>5:00 AM Starter Aggregator</title>
+    <title>5:00 Exact Filter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .starter-card { border-top: 4px solid #58A6FF; background: #161B22; transition: transform 0.2s; }
-        .starter-card:hover { transform: translateY(-2px); }
+        .exact-5-card { border-top: 4px solid #FF9900; background: #161B22; }
         .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.85rem; padding: 4px; border-radius: 4px; text-align: center; }
-        .time-badge { background: #1f6feb; color: white; font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: bold; }
+        .count-badge { background: #FF9900; color: #000; font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: 900; }
     </style>
 </head>
 <body class="p-4">
 
     <header class="max-w-6xl mx-auto mb-6 border-b border-[#30363D] pb-4 flex justify-between items-center">
         <div>
-            <h1 class="text-xl font-black text-white italic uppercase tracking-widest">Early Bird <span class="text-blue-500">5:00~</span></h1>
-            <p class="text-[10px] text-gray-500 font-bold uppercase">5:00開始の荷物のみを全抽出</p>
+            <h1 class="text-xl font-black text-white italic uppercase tracking-tighter">Strict Filter <span class="text-orange-500">5:00 ONLY</span></h1>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">開始時間が「5:00」のデータのみを抽出</p>
         </div>
-        <button onclick="location.reload()" class="text-[10px] bg-[#30363D] px-3 py-1.5 rounded hover:bg-[#444c56]">再読み込み</button>
+        <button onclick="location.reload()" class="text-[10px] bg-[#30363D] px-3 py-1.5 rounded hover:bg-[#444c56] transition-all">リセット</button>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-12 text-center hover:border-blue-500 hover:bg-[#161B22]/50 transition-all cursor-pointer mb-8">
-            <div class="text-4xl mb-2">🚛</div>
-            <p class="text-white font-bold">Excel(xlsx)をドロップして「5:00～」を抽出</p>
+        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-12 text-center hover:border-orange-500 hover:bg-[#161B22]/50 transition-all cursor-pointer mb-8">
+            <div class="text-4xl mb-2">🎯</div>
+            <p class="text-white font-bold">Excelをドロップして「5:00」を厳密抽出</p>
             <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
@@ -48,20 +47,20 @@
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                extractFiveAM(json);
+                filterStrictFiveAM(json);
             };
             reader.readAsArrayBuffer(file);
         }
 
-        function extractFiveAM(data) {
+        function filterStrictFiveAM(data) {
             const grid = document.getElementById('result-grid');
             grid.innerHTML = '';
 
-            // 「5:00」を含むデータを抽出し、CXごとにグループ化
+            // 開始時間が「05:00」に完全一致するものをグループ化
             const summary = data.reduce((acc, row) => {
                 const startTime = String(row['Scheduled Delivery Start Time'] || "");
                 
-                // 「05:00」または「5:00」が含まれるか判定
+                // 「05:00:00」または「5:00」を厳密にチェック
                 if (startTime.includes("05:00") || startTime.includes(" 5:00")) {
                     const cx = row['Route Code'] || '未割当';
                     const name = row['Last Scan By'] || '担当者名なし';
@@ -76,13 +75,13 @@
             const entries = Object.entries(summary).sort();
 
             if (entries.length === 0) {
-                grid.innerHTML = '<p class="text-center text-gray-500 col-span-full py-10">「5:00～」の荷物は見つかりませんでした。</p>';
+                grid.innerHTML = '<p class="text-center text-gray-500 col-span-full py-10">開始時間が「5:00」の荷物は現在ありません。</p>';
                 return;
             }
 
             entries.forEach(([cx, info]) => {
                 const card = document.createElement('div');
-                card.className = 'starter-card p-4 rounded-xl shadow-xl';
+                card.className = 'exact-5-card p-4 rounded-xl shadow-xl';
                 card.innerHTML = `
                     <div class="flex justify-between items-start mb-4 border-b border-[#30363D] pb-2">
                         <div>
@@ -90,8 +89,7 @@
                             <p class="text-[10px] text-gray-500 font-bold mt-0.5">${info.name}</p>
                         </div>
                         <div class="text-right">
-                            <span class="time-badge">5:00開始</span>
-                            <div class="text-[10px] text-green-500 font-black mt-1 uppercase">合計 ${info.items.length}個</div>
+                            <span class="count-badge">5:00指定: ${info.items.length}件</span>
                         </div>
                     </div>
                     <div class="grid grid-cols-1 gap-1">
