@@ -2,127 +2,106 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AMZ-EXP Aggregate Tool | Fixed Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Delivery Aggregator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
         .priority-am { border-left: 6px solid #F85149; background: linear-gradient(90deg, #2a1215 0%, #161b22 100%); }
-        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.8rem; padding: 2px 6px; border-radius: 4px; border: 1px solid #30363D; }
-        .loader { border-top-color: #FF9900; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; }
     </style>
 </head>
 <body class="p-4">
 
-    <header class="max-w-6xl mx-auto mb-6 flex justify-between items-end border-b border-[#30363D] pb-4">
-        <div>
-            <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Delivery <span class="text-orange-500">Aggregator</span></h1>
-            <p class="text-[10px] text-gray-500 font-bold uppercase">Auto-Mapping & Priority Filter</p>
-        </div>
-        <button onclick="location.reload()" class="text-[10px] bg-[#30363D] px-2 py-1 rounded">RESET</button>
+    <header class="max-w-6xl mx-auto mb-6 flex justify-between items-center border-b border-[#30363D] pb-4">
+        <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Delivery <span class="text-orange-500">Aggregator</span></h1>
+        <button onclick="location.reload()" class="text-xs bg-gray-800 px-3 py-1 rounded border border-gray-600">リセット</button>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-12 text-center hover:bg-[#161B22] transition-all cursor-pointer">
-            <div id="idle-view">
-                <p class="text-lg font-bold text-white mb-2">Excelファイルをここにドロップ</p>
-                <p class="text-xs text-gray-500">「時間指定（絞り込み後）.xlsx」に完全対応</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+            <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-xl p-8 text-center hover:bg-[#161B22] transition-all cursor-pointer">
+                <p class="text-sm font-bold text-white">Excel/CSVをドロップ</p>
+                <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
             </div>
-            <div id="loading-view" class="hidden">
-                <div class="loader w-8 h-8 border-4 border-[#30363D] rounded-full mx-auto mb-2"></div>
-                <p class="text-orange-500 font-bold animate-pulse text-xs">PROCESSING EXCEL...</p>
+            <div class="relative">
+                <textarea id="paste-area" class="w-full h-24 bg-[#161B22] border border-[#30363D] rounded-xl p-3 text-xs focus:border-orange-500 outline-none" placeholder="または、PDFからコピーしたテキストをここに貼り付け"></textarea>
+                <button id="process-text" class="absolute bottom-2 right-2 bg-orange-600 text-white text-[10px] px-3 py-1 rounded font-bold">解析実行</button>
             </div>
-            <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
-        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-6"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </main>
 
     <script>
-        const dropArea = document.getElementById('drop-area');
         const fileInput = document.getElementById('file-input');
+        const dropArea = document.getElementById('drop-area');
+        const pasteArea = document.getElementById('paste-area');
+        const processBtn = document.getElementById('process-text');
 
+        // ファイル処理
         dropArea.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => handleFile(e.target.files[0]);
-
-        function handleFile(file) {
-            if (!file) return;
-            document.getElementById('idle-view').classList.add('hidden');
-            document.getElementById('loading-view').classList.remove('hidden');
-
+        fileInput.onchange = (e) => {
+            const file = e.target.files[0];
             const reader = new FileReader();
-            reader.onload = (e) => {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
-                    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(sheet);
-                    
-                    if (json.length === 0) throw new Error("ファイルが空です");
-                    render(json);
-                } catch (err) {
-                    alert("エラー: " + err.message);
-                    location.reload();
-                }
+            reader.onload = (ev) => {
+                const data = new Uint8Array(ev.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+                render(json);
             };
             reader.readAsArrayBuffer(file);
-        }
+        };
+
+        // 貼り付け処理
+        processBtn.onclick = () => {
+            const text = pasteArea.value;
+            const lines = text.split('\n').filter(l => l.trim());
+            const data = lines.map(line => {
+                // 正規表現でDA番号とCXを強引に抽出
+                const da = line.match(/DA[0-9A-Z]+/i);
+                const cx = line.match(/CX[0-9]+/i);
+                return { 'Tracking ID': da ? da[0] : '', 'Route Code': cx ? cx[0] : '不明' };
+            }).filter(d => d['Tracking ID']);
+            render(data);
+        };
 
         function render(data) {
             const grid = document.getElementById('result-grid');
             grid.innerHTML = '';
             
-            // ファイル内の列名を柔軟に取得する（大文字小文字や空白対策）
             const getVal = (row, patterns) => {
-                const key = Object.keys(row).find(k => patterns.some(p => k.trim().includes(p)));
+                const key = Object.keys(row).find(k => patterns.some(p => k.toLowerCase().replace(/\s/g,'').includes(p)));
                 return key ? row[key] : null;
             };
 
-            // CX (Route Code) でグループ化
             const summary = data.reduce((acc, row) => {
-                // の列名構造に基づいて抽出
-                const cx = getVal(row, ['Route Code', 'Route']) || '未割当';
-                const name = getVal(row, ['Last Scan By', '担当者']) || '';
-                const da = getVal(row, ['Tracking ID', 'DA']) || '';
-                const endTime = String(getVal(row, ['End Time', 'Scheduled Delivery End Time']) || '');
-                
-                // 午前指定（13:00まで）の判定
+                const cx = getVal(row, ['routecode', 'route', 'コース']) || '未割当';
+                const da = getVal(row, ['trackingid', 'da', '商品']) || '';
+                const endTime = String(getVal(row, ['endtime', 'scheduleddeliveryend']) || '');
                 const isAM = endTime.includes('13:00') || endTime.includes('12:00');
 
-                if (!acc[cx]) acc[cx] = { name, items: [] };
-                if (da) acc[cx].items.push({ da, isAM });
+                if (!acc[cx]) acc[cx] = [];
+                if (da) acc[cx].push({ da, isAM });
                 return acc;
             }, {});
 
-            Object.entries(summary).sort().forEach(([cx, info]) => {
-                const amItems = info.items.filter(i => i.isAM);
+            Object.entries(summary).sort().forEach(([cx, items]) => {
+                const amCount = items.filter(i => i.isAM).length;
                 const card = document.createElement('div');
-                card.className = `bg-[#161B22] border border-[#30363D] rounded-xl p-4 shadow-xl ${amItems.length > 0 ? 'priority-am' : ''}`;
-                
+                card.className = `bg-[#161B22] border border-[#30363D] rounded-xl p-4 shadow-xl ${amCount > 0 ? 'priority-am' : ''}`;
                 card.innerHTML = `
-                    <div class="flex justify-between items-start mb-3 border-b border-[#30363D] pb-2">
-                        <div>
-                            <h2 class="text-sm font-black text-white leading-tight">${cx} 担当者</h2>
-                            <p class="text-[10px] text-gray-500 font-bold mt-1">${info.name}</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="bg-[#238636] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">合計 ${info.items.length}</span>
-                        </div>
+                    <div class="flex justify-between items-center mb-3 border-b border-[#30363D] pb-2">
+                        <h2 class="text-sm font-black text-white italic tracking-tight">${cx} 担当者</h2>
+                        <span class="bg-[#238636] text-white text-[10px] px-2 py-0.5 rounded-full">合計 ${items.length}件</span>
                     </div>
                     <div class="grid grid-cols-1 gap-1">
-                        ${info.items.map(i => `
-                            <div class="da-tag truncate ${i.isAM ? 'border-red-500 text-red-400 bg-red-900/10' : ''}">
-                                ${i.isAM ? '🕒 ' : ''}${i.da}
-                            </div>
-                        `).join('')}
+                        ${items.map(i => `<div class="da-tag truncate ${i.isAM ? 'border-red-500 text-red-400' : ''}">${i.isAM ? '🕒 ' : ''}${i.da}</div>`).join('')}
                     </div>
                 `;
                 grid.appendChild(card);
             });
-
-            document.getElementById('drop-area').classList.add('hidden');
         }
     </script>
 </body>
