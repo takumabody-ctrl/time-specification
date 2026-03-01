@@ -3,120 +3,119 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Smart Delivery Aggregator Pro</title>
+    <title>AMZ-EXP Delivery Monitor | Excel Direct</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .driver-group { background: #161B22; border: 1px solid #30363D; border-radius: 12px; margin-bottom: 1rem; overflow: hidden; }
-        .group-header { background: #21262D; padding: 12px 16px; border-bottom: 1px solid #30363D; display: flex; justify-between; align-items: center; }
-        .da-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; padding: 16px; }
-        .da-item { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.8rem; padding: 4px 8px; border-radius: 4px; text-align: center; }
-        .loading-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 100; }
-        .spinner { width: 40px; height: 40px; border: 4px solid #30363D; border-top-color: #FF9900; border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        :root { --amz-orange: #FF9900; --bg-dark: #0D1117; }
+        body { background-color: var(--bg-dark); color: #C9D1D9; font-family: 'Inter', sans-serif; }
+        .priority-am { border-left: 6px solid #F85149; background: linear-gradient(90deg, #2a1215 0%, #161b22 100%); }
+        .glass-card { background: #161B22; border: 1px solid #30363D; border-radius: 12px; }
+        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.75rem; padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
-<body class="p-4">
+<body class="p-4 md:p-8">
 
-    <div id="loading" class="loading-overlay">
-        <div class="spinner mb-4"></div>
-        <p class="text-orange-500 font-bold tracking-widest">画像から担当者と荷物を紐付け中...</p>
-    </div>
-
-    <header class="max-w-4xl mx-auto mb-6 flex justify-between items-end border-b border-[#30363D] pb-4">
+    <header class="max-w-6xl mx-auto mb-8 flex justify-between items-end border-b border-gray-800 pb-4">
         <div>
-            <h1 class="text-xl font-black text-white tracking-tighter uppercase">Delivery <span class="text-orange-500">Aggregator</span></h1>
-            <p class="text-[10px] text-gray-500 font-bold">画像ペア解析・担当者別集計モード</p>
+            <h1 class="text-2xl font-black text-white italic tracking-tighter uppercase">Delivery <span class="text-orange-500">Aggregator</span></h1>
+            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-none">Excel Direct Processing Mode</p>
         </div>
-        <button onclick="location.reload()" class="text-xs bg-[#30363D] text-white px-3 py-1 rounded">リセット</button>
+        <button onclick="location.reload()" class="text-[10px] font-bold bg-gray-800 text-white px-3 py-1.5 rounded border border-gray-700">RELOAD</button>
     </header>
 
-    <main class="max-w-4xl mx-auto">
-        <div id="drop-zone" class="border-2 border-dashed border-[#30363D] rounded-2xl p-10 text-center cursor-pointer hover:bg-[#161B22] transition-all mb-6">
-            <p class="text-gray-400 font-bold">【ここに画像をドロップ】</p>
-            <p class="text-[10px] text-gray-600 mt-2 uppercase">解析精度を高めるため、文字がはっきり写った画像を使用してください</p>
-            <input type="file" id="file-input" class="hidden" accept="image/*">
+    <main class="max-w-6xl mx-auto">
+        <div id="drop-area" class="relative group border-2 border-dashed border-gray-700 rounded-3xl p-16 text-center transition-all hover:border-orange-500 hover:bg-gray-800/20 mb-10 cursor-pointer">
+            <input type="file" id="file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx, .xls, .csv">
+            <div id="idle-view" class="space-y-4">
+                <div class="text-6xl group-hover:scale-110 transition-transform duration-300">📁</div>
+                <h2 class="text-xl font-bold text-white italic text-orange-500">Excelファイルをドロップ</h2>
+                <p class="text-gray-500 text-sm">「時間指定（絞り込み後）.xlsx」をそのまま読み込みます</p>
+            </div>
         </div>
 
-        <div id="output"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
     </main>
 
     <script>
-        const dropZone = document.getElementById('drop-zone');
         const fileInput = document.getElementById('file-input');
-        const loading = document.getElementById('loading');
-        const output = document.getElementById('output');
+        const dropArea = document.getElementById('drop-area');
 
-        dropZone.onclick = () => fileInput.click();
+        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+        dropArea.addEventListener('dragover', (e) => { e.preventDefault(); dropArea.classList.add('border-orange-500'); });
+        dropArea.addEventListener('dragleave', () => dropArea.classList.remove('border-orange-500'));
+        dropArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            handleFile(e.dataTransfer.files[0]);
+        });
 
-        fileInput.onchange = (e) => handleFile(e.target.files[0]);
-
-        async function handleFile(file) {
+        function handleFile(file) {
             if (!file) return;
-            loading.style.display = 'flex';
-            output.innerHTML = '';
+            const reader = new FileReader();
 
-            try {
-                // Tesseractの「hOCR」形式（座標情報付き）を利用して解析
-                const worker = await Tesseract.createWorker('jpn');
-                const { data } = await worker.recognize(file);
+            reader.onload = (e) => {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet);
                 
-                // 行ごとのデータを整理
-                const summary = {};
-
-                data.lines.forEach(line => {
-                    const text = line.text.trim();
-                    // DA番号（英数字）と名前（日本語）を分離
-                    // 画像の「左にDA、右に名前」という構造を利用
-                    const daMatch = text.match(/(DA|D4|da)[\-\s]?([0-9A-Z]{5,})/i);
-                    const nameMatch = text.match(/[一-龠ぁ-んァ-ヶ]{2,}/);
-
-                    if (daMatch) {
-                        const daId = daMatch[0].toUpperCase().replace('D4', 'DA').replace(/\s/g, '');
-                        const name = nameMatch ? nameMatch[0] : "未割当";
-
-                        if (!summary[name]) summary[name] = [];
-                        summary[name].push(daId);
-                    }
-                });
-
-                render(summary);
-                await worker.terminate();
-            } catch (err) {
-                alert("解析に失敗しました。画像が大きすぎるか、文字が読み取れません。");
-                console.error(err);
-            } finally {
-                loading.style.display = 'none';
-            }
+                processData(jsonData);
+            };
+            reader.readAsArrayBuffer(file);
         }
 
-        function render(summary) {
-            const names = Object.keys(summary).sort();
+        function processData(data) {
+            const grid = document.getElementById('result-grid');
+            grid.innerHTML = '';
             
-            if (names.length === 0) {
-                output.innerHTML = `<p class="text-center text-gray-500">有効なデータを検出できませんでした。</p>`;
+            if (data.length === 0) {
+                alert("データが見つかりませんでした。");
                 return;
             }
 
-            dropZone.classList.add('hidden');
+            // CX (Route Code) ごとにグループ化
+            const summary = data.reduce((acc, row) => {
+                const cx = row['Route Code'] || '未割当';
+                const name = row['Last Scan By'] || '担当者不明';
+                const da = row['Tracking ID'] || 'Unknown-DA';
+                const endTime = row['Scheduled Delivery End Time'] || '';
+                
+                // 13:00までの荷物（午前指定）を強調表示
+                const isAM = endTime.includes(' 13:00') || endTime.includes(' 12:00');
 
-            names.forEach(name => {
-                const das = summary[name];
-                const group = document.createElement('div');
-                group.className = 'driver-group shadow-xl';
-                group.innerHTML = `
-                    <div class="group-header">
-                        <span class="text-white font-bold text-sm">CX ${name} 担当者</span>
-                        <span class="bg-[#238636] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">合計 ${das.length} 個</span>
+                if (!acc[cx]) acc[cx] = { name: name, items: [] };
+                acc[cx].items.push({ da, isAM });
+                return acc;
+            }, {});
+
+            Object.entries(summary).sort().forEach(([cx, info]) => {
+                const amCount = info.items.filter(i => i.isAM).length;
+                const card = document.createElement('div');
+                card.className = `glass-card p-4 shadow-2xl transition-all ${amCount > 0 ? 'priority-am' : ''}`;
+                
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4 border-b border-gray-800 pb-2">
+                        <div>
+                            <h3 class="text-lg font-black text-white italic tracking-tight">${cx} 担当者</h3>
+                            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">${info.name}</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="bg-[#238636] text-white text-[10px] font-black px-2 py-1 rounded-full">合計 ${info.items.length} 個</span>
+                            ${amCount > 0 ? `<div class="text-red-500 text-[10px] font-black mt-1 animate-pulse italic">🕒 午後 13:00 まで: ${amCount}</div>` : ''}
+                        </div>
                     </div>
-                    <div class="da-grid">
-                        ${das.map(da => `<div class="da-item">${da}</div>`).join('')}
+                    <div class="grid grid-cols-2 gap-1.5">
+                        ${info.items.map(item => `
+                            <span class="da-tag truncate text-center ${item.isAM ? 'border-red-500/50 text-red-400 bg-red-900/10' : ''}">
+                                ${item.da}
+                            </span>
+                        `).join('')}
                     </div>
                 `;
-                output.appendChild(group);
+                grid.appendChild(card);
             });
+
+            document.getElementById('drop-area').classList.add('hidden');
         }
     </script>
 </body>
