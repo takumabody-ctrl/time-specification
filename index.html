@@ -3,108 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>5:00:00 Exact Aggregator</title>
+    <title>AMZ-EXP Time-Check Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .card-5am { border: 1px solid #30363D; background: #161B22; border-top: 4px solid #238636; }
-        .da-mono { font-family: 'JetBrains Mono', monospace; background: #0D1117; color: #58A6FF; border: 1px solid #30363D; }
+        .card-update { animation: fadeIn 0.4s ease-out; border-top: 4px solid #238636; background: #161B22; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: 'Courier New', monospace; }
     </style>
 </head>
 <body class="p-4">
 
-    <header class="max-w-6xl mx-auto mb-8 border-b border-[#30363D] pb-4 flex justify-between items-center">
+    <header class="max-w-6xl mx-auto mb-6 border-b border-[#30363D] pb-4 flex justify-between items-center">
         <div>
-            <h1 class="text-2xl font-black text-white tracking-tighter italic">5:00:00 <span class="text-green-500">EXACT</span></h1>
-            <p class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">開始時間 05:00:00 のデータのみを抽出中</p>
+            <h1 class="text-xl font-black text-white italic tracking-tighter uppercase">Delivery <span class="text-green-500">Monitor</span></h1>
+            <p id="file-status" class="text-[10px] text-gray-500 font-bold uppercase tracking-widest">ファイルを待機中...</p>
         </div>
-        <button onclick="location.reload()" class="bg-[#21262D] text-[10px] px-3 py-1.5 rounded-md border border-[#30363D] hover:bg-[#30363D]">RESET</button>
+        <button onclick="location.reload()" class="bg-[#21262D] text-[10px] px-3 py-1.5 rounded-md border border-[#30363D]">クリア</button>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-3xl p-16 text-center hover:border-green-500 transition-all cursor-pointer bg-[#0D1117]">
-            <div class="text-5xl mb-4">⏱️</div>
-            <p class="text-xl font-bold text-white">ここにExcelをドロップ</p>
-            <p class="text-sm text-gray-500 mt-2">5:00:00指定の荷物だけを即座に仕分けます</p>
+        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-10 text-center hover:bg-[#161B22] transition-all cursor-pointer">
+            <p id="drop-text" class="text-white font-bold text-sm">【最新のExcel】をここにドロップ</p>
+            <p class="text-[10px] text-gray-500 mt-2">※5:00:00指定の荷物だけをリアルタイムで抽出します</p>
             <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
-        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-8"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-6"></div>
     </main>
 
     <script>
         const fileInput = document.getElementById('file-input');
         const dropArea = document.getElementById('drop-area');
+        const statusText = document.getElementById('file-status');
 
         dropArea.onclick = () => fileInput.click();
-        fileInput.onchange = (e) => {
-            const file = e.target.files[0];
+        fileInput.onchange = (e) => handleFile(e.target.files[0]);
+
+        function handleFile(file) {
+            if (!file) return;
+            
+            // 画面を一度真っ白にして古いデータを破棄
+            document.getElementById('result-grid').innerHTML = '';
+            statusText.innerText = `読み込み中: ${file.name}`;
+            statusText.classList.add('text-orange-500');
+
             const reader = new FileReader();
             reader.onload = (ev) => {
                 const data = new Uint8Array(ev.target.result);
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                processStrict(json);
+                
+                render(json, file.name);
             };
             reader.readAsArrayBuffer(file);
-        };
+        }
 
-        function processStrict(data) {
+        function render(data, fileName) {
             const grid = document.getElementById('result-grid');
-            grid.innerHTML = '';
-            
-            const summary = data.reduce((acc, row) => {
+            grid.innerHTML = ''; // 念押しでクリア
+
+            const summary = {};
+
+            data.forEach(row => {
                 const startTimeRaw = row['Scheduled Delivery Start Time'];
-                let isFiveAM = false;
+                let isTarget = false;
 
-                // 日付オブジェクトまたは文字列から「05:00:00」を厳密に判定
+                // 5:00:00 の厳密判定
                 if (startTimeRaw instanceof Date) {
-                    if (startTimeRaw.getHours() === 5 && startTimeRaw.getMinutes() === 0) isFiveAM = true;
+                    // Excelが日付として認識している場合
+                    if (startTimeRaw.getHours() === 5 && startTimeRaw.getMinutes() === 0) isTarget = true;
                 } else {
-                    const timeStr = String(startTimeRaw || "");
-                    if (timeStr.includes("05:00:00") || timeStr.includes(" 5:00:00")) isFiveAM = true;
+                    // 文字列として認識している場合
+                    const s = String(startTimeRaw || "");
+                    if (s.includes("05:00:00") || s.includes(" 5:00:00")) isTarget = true;
                 }
 
-                if (isFiveAM) {
+                if (isTarget) {
                     const cx = row['Route Code'] || '未割当';
-                    const name = row['Last Scan By'] || '担当者不明';
-                    const da = row['Tracking ID'] || 'N/A';
+                    const name = row['Last Scan By'] || '不明';
+                    const da = row['Tracking ID'] || 'Unknown';
 
-                    if (!acc[cx]) acc[cx] = { name, items: [] };
-                    acc[cx].items.push(da);
+                    if (!summary[cx]) summary[cx] = { name, items: [] };
+                    summary[cx].items.push(da);
                 }
-                return acc;
-            }, {});
-
-            const entries = Object.entries(summary).sort();
-
-            if (entries.length === 0) {
-                grid.innerHTML = '<div class="col-span-full text-center py-20 text-gray-500 font-bold">5:00:00指定の荷物は1件もありませんでした。</div>';
-                return;
-            }
-
-            entries.forEach(([cx, info]) => {
-                const card = document.createElement('div');
-                card.className = 'card-5am p-5 rounded-2xl shadow-2xl';
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-4 border-b border-[#30363D] pb-3">
-                        <div>
-                            <h2 class="text-lg font-black text-white italic">${cx} 担当者</h2>
-                            <p class="text-xs text-gray-400 font-medium">${info.name}</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="bg-[#238636] text-white text-[10px] px-2.5 py-1 rounded-full font-black uppercase">5:00:00 | ${info.items.length}件</span>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 gap-2">
-                        ${info.items.map(da => `<div class="da-mono p-2 rounded-lg text-xs font-bold text-center italic tracking-wider">${da}</div>`).join('')}
-                    </div>
-                `;
-                grid.appendChild(card);
             });
 
-            dropArea.classList.add('hidden');
+            const sortedKeys = Object.keys(summary).sort();
+
+            if (sortedKeys.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500">
+                    ファイル「${fileName}」には<br>5:00:00指定の荷物はありませんでした。</div>`;
+            } else {
+                sortedKeys.forEach(cx => {
+                    const info = summary[cx];
+                    const card = document.createElement('div');
+                    card.className = 'card-update p-4 rounded-xl shadow-lg';
+                    card.innerHTML = `
+                        <div class="flex justify-between items-start mb-3 border-b border-[#30363D] pb-2">
+                            <div>
+                                <h2 class="text-sm font-black text-white italic">${cx} 担当者</h2>
+                                <p class="text-[10px] text-gray-500">${info.name}</p>
+                            </div>
+                            <span class="bg-[#238636] text-white text-[10px] px-2 py-0.5 rounded-full font-bold">5:00指定: ${info.items.length}件</span>
+                        </div>
+                        <div class="grid grid-cols-1 gap-1">
+                            ${info.items.map(da => `<div class="da-tag p-1.5 rounded text-xs text-center">${da}</div>`).join('')}
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                });
+            }
+
+            statusText.innerText = `完了: ${fileName}`;
+            statusText.classList.replace('text-orange-500', 'text-green-500');
+            // ファイル選択をリセット（同じファイル名の再選択を可能にする）
+            fileInput.value = '';
         }
     </script>
 </body>
