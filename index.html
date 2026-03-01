@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>AMZ-EXP Checker Pro v3</title>
+    <title>AMZ-EXP Realtime Monitor</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
@@ -10,40 +10,32 @@
 
     <header class="max-w-6xl mx-auto mb-6 flex justify-between items-center border-b border-[#30363D] pb-4">
         <div>
-            <h1 class="text-xl font-black text-white italic italic uppercase">Time Check <span class="text-green-500 underline">Strict</span></h1>
-            <p id="current-file" class="text-[10px] text-orange-500 font-bold mt-1 uppercase tracking-tighter">ファイルを選択してください</p>
+            <h1 class="text-xl font-black text-white italic uppercase tracking-tighter">5:00:00 <span class="text-blue-500">Status Tracking</span></h1>
+            <p id="current-file" class="text-[10px] text-green-500 font-bold mt-1 uppercase">ファイル待機中</p>
         </div>
-        <div class="text-right">
-            <p class="text-[10px] text-gray-500">Target Time</p>
-            <p class="text-sm font-bold text-white">05:00:00</p>
+        <div class="bg-[#161B22] border border-[#30363D] p-2 rounded text-right">
+            <span class="text-[9px] block text-gray-500 font-bold">LATEST UPDATE</span>
+            <span id="update-time" class="text-xs font-mono">--:--:--</span>
         </div>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-10 text-center hover:bg-[#161B22] transition-all cursor-pointer">
-            <p class="text-white font-bold">ここに最新のExcelをドロップ</p>
-            <p class="text-[10px] text-gray-500 mt-2 italic">※読み込むたびに以前のデータは完全に消去されます</p>
+        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-8 text-center hover:bg-[#161B22] transition-all cursor-pointer mb-6">
+            <p class="text-white font-bold text-sm">最新のExcelをここにドロップ</p>
             <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
-        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mt-6"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3"></div>
     </main>
 
     <script>
         const fileInput = document.getElementById('file-input');
         const dropArea = document.getElementById('drop-area');
-        const fileStatus = document.getElementById('current-file');
-        const grid = document.getElementById('result-grid');
 
         dropArea.onclick = () => fileInput.click();
-        
         fileInput.onchange = (e) => {
             const file = e.target.files[0];
             if (!file) return;
-
-            // 1. 以前の表示を物理的に消去
-            grid.innerHTML = '';
-            fileStatus.innerText = "LOADING: " + file.name;
 
             const reader = new FileReader();
             reader.onload = (ev) => {
@@ -51,32 +43,27 @@
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                 
-                // 2. 解析して描画
+                document.getElementById('update-time').innerText = new Date().toLocaleTimeString();
+                document.getElementById('current-file').innerText = "ACTIVE: " + file.name;
                 render(json);
-                fileStatus.innerText = "ACTIVE: " + file.name;
-                fileStatus.classList.replace('text-orange-500', 'text-green-500');
             };
             reader.readAsArrayBuffer(file);
-            
-            // 3. inputを空にする（同じファイルを再度投げても反応するようにする）
             fileInput.value = '';
         };
 
         function render(data) {
+            const grid = document.getElementById('result-grid');
+            grid.innerHTML = ''; 
             const summary = {};
 
             data.forEach(row => {
-                // 列名を特定（スペースが含まれる場合を考慮）
                 const startTimeKey = Object.keys(row).find(k => k.trim() === 'Scheduled Delivery Start Time');
                 const val = row[startTimeKey];
                 
                 let isMatch = false;
                 if (val) {
                     const s = String(val);
-                    // 「05:00:00」という文字列が完全に含まれているか、日付型で5時か
-                    if (s.includes("05:00:00") || s.includes(" 5:00:00")) {
-                        isMatch = true;
-                    } else if (val instanceof Date && val.getHours() === 5) {
+                    if (s.includes("05:00:00") || s.includes(" 5:00:00") || (val instanceof Date && val.getHours() === 5)) {
                         isMatch = true;
                     }
                 }
@@ -85,32 +72,36 @@
                     const cx = row['Route Code'] || '未割当';
                     const name = row['Last Scan By'] || '不明';
                     const da = row['Tracking ID'] || 'Unknown';
+                    const state = row['State'] || '不明'; // 配送ステータスを取得
+
                     if (!summary[cx]) summary[cx] = { name, items: [] };
-                    summary[cx].items.push(da);
+                    summary[cx].items.push({ da, state });
                 }
             });
 
-            const keys = Object.keys(summary).sort();
-            if (keys.length === 0) {
-                grid.innerHTML = '<p class="col-span-full text-center text-gray-500 py-20">このファイルには 05:00:00 指定のデータは存在しません。</p>';
-                return;
-            }
-
-            keys.forEach(cx => {
+            Object.keys(summary).sort().forEach(cx => {
                 const info = summary[cx];
                 const card = document.createElement('div');
-                card.className = 'bg-[#161B22] border border-[#30363D] p-4 rounded-xl shadow-xl border-t-4 border-green-600';
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-3 border-b border-[#30363D] pb-2">
-                        <div>
-                            <h2 class="text-sm font-black text-white italic">${cx}</h2>
-                            <p class="text-[10px] text-gray-400 font-bold">${info.name}</p>
+                card.className = 'bg-[#161B22] border border-[#30363D] p-4 rounded-xl shadow-xl';
+                
+                const itemsHtml = info.items.map(item => {
+                    const isDelivered = item.state.includes('Delivered');
+                    return `
+                        <div class="flex justify-between items-center bg-[#0D1117] p-2 rounded border border-[#30363D] mb-1">
+                            <span class="text-[11px] font-mono text-[#58A6FF]">${item.da}</span>
+                            <span class="text-[9px] px-1.5 py-0.5 rounded font-bold ${isDelivered ? 'bg-blue-900 text-blue-200' : 'bg-orange-900 text-orange-200'}">
+                                ${isDelivered ? '完了' : '配送中'}
+                            </span>
                         </div>
-                        <span class="bg-green-900 text-green-300 text-[10px] px-2 py-0.5 rounded font-black">5:00指定: ${info.items.length}件</span>
+                    `;
+                }).join('');
+
+                card.innerHTML = `
+                    <div class="flex justify-between items-end mb-3 border-b border-[#30363D] pb-2">
+                        <h2 class="text-sm font-black text-white italic">${cx} <span class="text-[10px] text-gray-500 not-italic ml-1">${info.name}</span></h2>
+                        <span class="text-[10px] text-green-500 font-bold">5:00指定: ${info.items.length}件</span>
                     </div>
-                    <div class="space-y-1">
-                        ${info.items.map(da => `<div class="bg-[#0D1117] border border-[#30363D] text-[#58A6FF] text-[11px] p-1.5 rounded font-mono text-center tracking-tighter">${da}</div>`).join('')}
-                    </div>
+                    <div>${itemsHtml}</div>
                 `;
                 grid.appendChild(card);
             });
