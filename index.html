@@ -2,43 +2,46 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>5:00 Monitor - Screenshot Edition</title>
+    <title>5:00 Monitor - Screenshot Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
-        body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; overflow-x: hidden; }
-        .compact-card { background: #161B22; border: 1px solid #30363D; border-top: 3px solid #238636; }
-        .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-right: 4px; }
-        .dot-delivered { background-color: #238636; box-shadow: 0 0 5px #238636; }
-        .dot-transit { background-color: #9e6a03; box-shadow: 0 0 5px #9e6a03; }
-        /* スクロールバーを隠す（スクショ用） */
-        ::-webkit-scrollbar { width: 0px; }
+        body { background-color: #0D1117; color: #C9D1D9; font-family: 'Inter', sans-serif; }
+        .cx-card { 
+            background: #161B22; 
+            border: 2px solid #30363D; 
+            border-left: 8px solid #238636;
+            transition: transform 0.1s;
+        }
+        .delivered-bar { height: 6px; background: #238636; border-radius: 3px; }
+        .transit-bar { height: 6px; background: #9e6a03; border-radius: 3px; }
+        /* 文字の太さとエッジを強調 */
+        .font-heavy { font-weight: 900; letter-spacing: -0.02em; }
     </style>
 </head>
-<body class="p-2">
+<body class="p-4">
 
-    <header class="flex justify-between items-center border-b border-[#30363D] pb-1 mb-2">
-        <div class="flex items-center gap-3">
-            <h1 class="text-lg font-black text-white italic tracking-tighter">5:00 <span class="text-green-500">MONITOR</span></h1>
-            <span id="file-name" class="text-[10px] text-gray-500 font-mono truncate max-w-[200px]">NO FILE</span>
+    <header class="flex justify-between items-center border-b-2 border-[#30363D] pb-3 mb-4">
+        <div class="flex items-baseline gap-4">
+            <h1 class="text-3xl font-heavy text-white italic uppercase">5:00 <span class="text-green-500">Master</span></h1>
+            <span id="file-name" class="text-xs text-gray-500 font-bold truncate max-w-[300px]">READY</span>
         </div>
-        <div class="flex gap-2">
-            <button onclick="location.reload()" class="bg-red-900/30 text-red-500 text-[10px] px-3 py-1 border border-red-900/50 rounded hover:bg-red-900/50 transition-all font-bold">リセット</button>
-            <div id="clock" class="text-xs font-mono bg-[#161B22] px-2 py-1 rounded border border-[#30363D]">00:00:00</div>
+        <div class="flex gap-3">
+            <button onclick="location.reload()" class="bg-red-600 text-white text-xs font-black px-4 py-2 rounded hover:bg-red-700 uppercase">Reset</button>
+            <div id="clock" class="text-xl font-mono font-bold bg-[#161B22] px-3 py-1 rounded border border-[#30363D]">00:00:00</div>
         </div>
     </header>
 
     <main>
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-lg p-4 text-center hover:bg-[#161B22] cursor-pointer mb-2 transition-all">
-            <p id="drop-text" class="text-gray-400 text-xs font-bold">【抽出時】ファイルをドロップ</p>
+        <div id="drop-area" class="border-4 border-dashed border-[#30363D] rounded-2xl p-6 text-center hover:bg-[#161B22] cursor-pointer mb-6">
+            <p id="drop-text" class="text-white text-lg font-black underline italic">ここに【抽出時】エクセルをドロップ</p>
             <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
-        <div id="result-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2"></div>
+        <div id="result-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
     </main>
 
     <script>
-        // 時計機能
         setInterval(() => { document.getElementById('clock').innerText = new Date().toLocaleTimeString(); }, 1000);
 
         const fileInput = document.getElementById('file-input');
@@ -55,9 +58,7 @@
                 const workbook = XLSX.read(data, { type: 'array', cellDates: true });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
                 render(json);
-                // 読み込み後はドロップエリアを最小化してスペースを空ける
-                dropArea.classList.replace('p-10', 'p-2');
-                document.getElementById('drop-text').innerText = "再読み込みはここをクリック";
+                dropArea.classList.add('hidden');
             };
             reader.readAsArrayBuffer(file);
             fileInput.value = '';
@@ -91,30 +92,40 @@
 
             Object.keys(summary).sort((a,b) => (parseInt(a.replace(/\D/g,'')) || 0) - (parseInt(b.replace(/\D/g,'')) || 0)).forEach(cx => {
                 const info = summary[cx];
+                const total = info.items.length;
                 const deliveredCount = info.items.filter(i => i.state === 'Delivered').length;
-                const transitCount = info.items.length - deliveredCount;
+                const transitCount = total - deliveredCount;
+
+                // 完了率の計算
+                const deliveredWidth = (deliveredCount / total) * 100;
 
                 const card = document.createElement('div');
-                card.className = 'compact-card p-2 rounded shadow-sm';
+                card.className = 'cx-card p-4 rounded-xl shadow-lg';
                 card.innerHTML = `
-                    <div class="flex justify-between items-start leading-none mb-1.5">
+                    <div class="flex justify-between items-center mb-3">
                         <div>
-                            <span class="text-[11px] font-black text-white italic">${cx}</span>
-                            <span class="text-[8px] text-gray-500 block">${info.name.substring(0,5)}</span>
+                            <span class="text-3xl font-heavy text-white italic block leading-none">${cx}</span>
+                            <span class="text-sm text-gray-400 font-bold mt-1 block">${info.name}</span>
                         </div>
                         <div class="text-right">
-                            <span class="text-sm font-black text-green-500">${info.items.length}</span>
-                            <span class="text-[7px] text-gray-600 block">PKGS</span>
+                            <span class="text-4xl font-heavy text-green-500 leading-none">${total}</span>
+                            <span class="text-[10px] text-gray-500 block font-black uppercase">Packages</span>
                         </div>
                     </div>
-                    <div class="flex flex-wrap gap-1 border-t border-[#30363D] pt-1.5">
-                        <div class="flex items-center text-[9px] mr-2">
-                            <span class="status-dot dot-delivered"></span>
-                            <span class="text-gray-300">${deliveredCount}</span>
+                    
+                    <div class="space-y-2">
+                        <div class="flex w-full bg-[#30363D] rounded-full overflow-hidden h-3">
+                            <div class="delivered-bar" style="width: ${deliveredWidth}%"></div>
                         </div>
-                        <div class="flex items-center text-[9px]">
-                            <span class="status-dot dot-transit"></span>
-                            <span class="text-gray-300">${transitCount}</span>
+                        <div class="flex justify-between font-bold text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">完了 ${deliveredCount}</span>
+                                <span class="text-gray-600">|</span>
+                                <span class="text-orange-500">未完 ${transitCount}</span>
+                            </div>
+                            <div class="text-white bg-[#238636] px-2 rounded text-xs flex items-center">
+                                ${Math.round(deliveredWidth)}%
+                            </div>
                         </div>
                     </div>
                 `;
