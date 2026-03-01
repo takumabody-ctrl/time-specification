@@ -3,25 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>15:00 Priority Aggregator</title>
+    <title>5:00 AM Starter Aggregator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         body { background-color: #0D1117; color: #C9D1D9; font-family: sans-serif; }
-        .priority-card { border-top: 4px solid #F85149; background: #161B22; }
-        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #FF9900; font-family: monospace; font-size: 0.85rem; padding: 4px; border-radius: 4px; text-align: center; }
+        .starter-card { border-top: 4px solid #58A6FF; background: #161B22; transition: transform 0.2s; }
+        .starter-card:hover { transform: translateY(-2px); }
+        .da-tag { background: #0D1117; border: 1px solid #30363D; color: #58A6FF; font-family: monospace; font-size: 0.85rem; padding: 4px; border-radius: 4px; text-align: center; }
+        .time-badge { background: #1f6feb; color: white; font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: bold; }
     </style>
 </head>
 <body class="p-4">
 
-    <header class="max-w-6xl mx-auto mb-6 border-b border-[#30363D] pb-4">
-        <h1 class="text-xl font-black text-white italic uppercase">15:00 <span class="text-red-500">Priority</span> Filter</h1>
-        <p class="text-[10px] text-gray-500 font-bold uppercase">5:00〜15:00の荷物のみを抽出中</p>
+    <header class="max-w-6xl mx-auto mb-6 border-b border-[#30363D] pb-4 flex justify-between items-center">
+        <div>
+            <h1 class="text-xl font-black text-white italic uppercase tracking-widest">Early Bird <span class="text-blue-500">5:00~</span></h1>
+            <p class="text-[10px] text-gray-500 font-bold uppercase">5:00開始の荷物のみを全抽出</p>
+        </div>
+        <button onclick="location.reload()" class="text-[10px] bg-[#30363D] px-3 py-1.5 rounded hover:bg-[#444c56]">再読み込み</button>
     </header>
 
     <main class="max-w-6xl mx-auto">
-        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-10 text-center hover:bg-[#161B22] transition-all cursor-pointer mb-6">
-            <p class="text-white font-bold">Excelファイルをドロップして抽出開始</p>
+        <div id="drop-area" class="border-2 border-dashed border-[#30363D] rounded-2xl p-12 text-center hover:border-blue-500 hover:bg-[#161B22]/50 transition-all cursor-pointer mb-8">
+            <div class="text-4xl mb-2">🚛</div>
+            <p class="text-white font-bold">Excel(xlsx)をドロップして「5:00～」を抽出</p>
             <input type="file" id="file-input" class="hidden" accept=".xlsx, .xls, .csv">
         </div>
 
@@ -42,27 +48,23 @@
                 const data = new Uint8Array(e.target.result);
                 const workbook = XLSX.read(data, { type: 'array' });
                 const json = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
-                process(json);
+                extractFiveAM(json);
             };
             reader.readAsArrayBuffer(file);
         }
 
-        function process(data) {
+        function extractFiveAM(data) {
             const grid = document.getElementById('result-grid');
             grid.innerHTML = '';
 
-            // 15:00までのデータを抽出し、CXごとにグループ化
+            // 「5:00」を含むデータを抽出し、CXごとにグループ化
             const summary = data.reduce((acc, row) => {
-                const endTime = String(row['Scheduled Delivery End Time'] || "");
                 const startTime = String(row['Scheduled Delivery Start Time'] || "");
                 
-                // 「13:00」や「14:00」「15:00」が含まれる、かつ「5:00」開始のものなどを判定
-                // 15時以前（15:00:00以下）のデータを抽出
-                const isTargetTime = (endTime.includes("12:00") || endTime.includes("13:00") || endTime.includes("14:00") || endTime.includes("15:00"));
-
-                if (isTargetTime) {
+                // 「05:00」または「5:00」が含まれるか判定
+                if (startTime.includes("05:00") || startTime.includes(" 5:00")) {
                     const cx = row['Route Code'] || '未割当';
-                    const name = row['Last Scan By'] || '不明';
+                    const name = row['Last Scan By'] || '担当者名なし';
                     const da = row['Tracking ID'] || 'Unknown';
 
                     if (!acc[cx]) acc[cx] = { name, items: [] };
@@ -74,24 +76,25 @@
             const entries = Object.entries(summary).sort();
 
             if (entries.length === 0) {
-                grid.innerHTML = '<p class="text-center text-gray-500 col-span-full">対象の時間帯（15:00まで）の荷物は見つかりませんでした。</p>';
+                grid.innerHTML = '<p class="text-center text-gray-500 col-span-full py-10">「5:00～」の荷物は見つかりませんでした。</p>';
                 return;
             }
 
             entries.forEach(([cx, info]) => {
                 const card = document.createElement('div');
-                card.className = 'priority-card p-4 rounded-xl shadow-2xl';
+                card.className = 'starter-card p-4 rounded-xl shadow-xl';
                 card.innerHTML = `
-                    <div class="flex justify-between items-center mb-3 border-b border-[#30363D] pb-2">
+                    <div class="flex justify-between items-start mb-4 border-b border-[#30363D] pb-2">
                         <div>
-                            <h2 class="text-sm font-black text-white italic">${cx} 担当者</h2>
-                            <p class="text-[10px] text-gray-500 font-bold">${info.name}</p>
+                            <h2 class="text-sm font-black text-white italic tracking-tighter">${cx} 担当者</h2>
+                            <p class="text-[10px] text-gray-500 font-bold mt-0.5">${info.name}</p>
                         </div>
-                        <div class="bg-red-600 text-white text-[10px] px-2 py-0.5 rounded-full font-black">
-                            15:00迄: ${info.items.length}件
+                        <div class="text-right">
+                            <span class="time-badge">5:00開始</span>
+                            <div class="text-[10px] text-green-500 font-black mt-1 uppercase">合計 ${info.items.length}個</div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 gap-1.5">
+                    <div class="grid grid-cols-1 gap-1">
                         ${info.items.map(da => `<div class="da-tag">${da}</div>`).join('')}
                     </div>
                 `;
